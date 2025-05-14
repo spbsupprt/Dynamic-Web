@@ -25,7 +25,7 @@
 
 Применяем плейбук https://github.com/spbsupprt/Dynamic-Web/blob/main/web.yml
 
-![image](https://github.com/user-attachments/assets/c516f620-b034-404c-9147-94299c03fbb0)
+![image](https://github.com/user-attachments/assets/66f8dc32-cfaa-45d9-ac4a-bdc91468a560)
 
 
 Делаем проверки:
