@@ -1,0 +1,200 @@
+---
+- name: Deploy web application stack
+  hosts: localhost
+  become: yes
+  gather_facts: yes
+
+  vars:
+    project_dir: /opt/webapp
+    db_name: wordpress
+    db_root_password: dbpassword
+    django_secret_key: "your_django_secret_key_here"
+
+  tasks:
+    - name: Install required system packages
+      apt:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - software-properties-common
+          - python3-pip
+        state: present
+        update_cache: yes
+
+    - name: Add Docker GPG key
+      apt_key:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        state: present
+
+    - name: Add Docker repository
+      apt_repository:
+        repo: deb [arch=amd64] https://download.docker.com/linux/ubuntu focal stable
+        state: present
+
+    - name: Install Docker
+      apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+        state: present
+        update_cache: yes
+
+    - name: Install Docker Compose
+      pip:
+        name: docker-compose
+        state: present
+
+    - name: Add current user to docker group
+      user:
+        name: "{{ ansible_user }}"
+        groups: docker
+        append: yes
+
+    - name: Create project directory structure
+      file:
+        path: "{{ item }}"
+        state: directory
+        mode: 0755
+      with_items:
+        - "{{ project_dir }}"
+        - "{{ project_dir }}/nginx-conf"
+        - "{{ project_dir }}/node"
+        - "{{ project_dir }}/python"
+        - "{{ project_dir }}/python/mysite"
+        - "{{ project_dir }}/dbdata"
+        - "{{ project_dir }}/wordpress"
+
+    - name: Create .env file
+      template:
+        src: templates/env.j2
+        dest: "{{ project_dir }}/.env"
+        mode: 0644
+
+    - name: Create nginx configuration
+      template:
+        src: templates/nginx.conf.j2
+        dest: "{{ project_dir }}/nginx-conf/nginx.conf"
+        mode: 0644
+
+    - name: Create Node.js application
+      copy:
+        content: |
+          const http = require('http');
+          const hostname = '0.0.0.0';
+          const port = 3000;
+
+          const server = http.createServer((req, res) => {
+            res.statusCode = 200;
+            res.setHeader('Content-Type', 'text/plain');
+            res.end('Hello from node js server');
+          });
+
+          server.listen(port, hostname, () => {
+            console.log(`Server running at http://${hostname}:${port}/`);
+          });
+        dest: "{{ project_dir }}/node/test.js"
+        mode: 0644
+
+    - name: Create Django application files
+      block:
+        - name: Create requirements.txt
+          copy:
+            content: |
+              Django==3.1
+              gunicorn==20.0.4
+              pytz==2020.1
+            dest: "{{ project_dir }}/python/requirements.txt"
+            mode: 0644
+
+        - name: Create manage.py
+          copy:
+            content: |
+              #!/usr/bin/env python
+              """Django's command-line utility for administrative tasks."""
+              import os
+              import sys
+
+              def main():
+                  """Run administrative tasks."""
+                  os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'mysite.settings')
+                  try:
+                      from django.core.management import execute_from_command_line
+                  except ImportError as exc:
+                      raise ImportError(
+                          "Couldn't import Django. Are you sure it's installed and "
+                          "available on your PYTHONPATH environment variable? Did you "
+                          "forget to activate a virtual environment?"
+                      ) from exc
+                  execute_from_command_line(sys.argv)
+
+              if __name__ == '__main__':
+                  main()
+            dest: "{{ project_dir }}/python/manage.py"
+            mode: 0755
+
+        - name: Create Django settings
+          template:
+            src: templates/django_settings.py.j2
+            dest: "{{ project_dir }}/python/mysite/settings.py"
+            mode: 0644
+
+        - name: Create urls.py
+          copy:
+            content: |
+              from django.contrib import admin
+              from django.urls import path
+
+              urlpatterns = [
+                  path('admin/', admin.site.urls),
+              ]
+            dest: "{{ project_dir }}/python/mysite/urls.py"
+            mode: 0644
+
+        - name: Create wsgi.py
+          copy:
+            content: |
+              import os
+              from django.core.wsgi import get_wsgi_application
+
+              os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'mysite.settings')
+              application = get_wsgi_application()
+            dest: "{{ project_dir }}/python/mysite/wsgi.py"
+            mode: 0644
+
+        - name: Create __init__.py
+          copy:
+            content: ""
+            dest: "{{ project_dir }}/python/mysite/__init__.py"
+            mode: 0644
+
+    - name: Create Dockerfile for Django
+      copy:
+        content: |
+          FROM python:3.8.3
+          ENV APP_ROOT /src
+          ENV CONFIG_ROOT /config
+          RUN mkdir ${CONFIG_ROOT}
+          COPY requirements.txt ${CONFIG_ROOT}/requirements.txt
+          RUN pip install -r ${CONFIG_ROOT}/requirements.txt
+          RUN mkdir ${APP_ROOT}
+          WORKDIR ${APP_ROOT}
+          ADD . ${APP_ROOT}
+        dest: "{{ project_dir }}/python/Dockerfile"
+        mode: 0644
+
+    - name: Create docker-compose.yml
+      template:
+        src: templates/docker-compose.yml.j2
+        dest: "{{ project_dir }}/docker-compose.yml"
+        mode: 0644
+
+    - name: Start containers
+      command: docker-compose up -d
+      args:
+        chdir: "{{ project_dir }}"
+      environment:
+        DB_NAME: "{{ db_name }}"
+        DB_ROOT_PASSWORD: "{{ db_root_password }}"
+        MYSITE_SECRET_KEY: "{{ django_secret_key }}"
