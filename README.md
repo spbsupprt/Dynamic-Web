@@ -20,3 +20,8 @@
 
 Дано:
 
+![image](https://github.com/user-attachments/assets/4fa46951-3612-42f8-a871-5eb1e30673be)
+
+
+Применяем плейбук https://github.com/spbsupprt/Dynamic-Web/blob/main/web.yml
+
