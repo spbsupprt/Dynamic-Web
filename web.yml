@@ -42,13 +42,13 @@
         update_cache: yes
 
     - name: Install Docker Compose
-      pip:
+      apt:
         name: docker-compose
         state: present
 
     - name: Add current user to docker group
       user:
-        name: "{{ ansible_user }}"
+        name: root
         groups: docker
         append: yes
 
